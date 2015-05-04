@@ -8,10 +8,40 @@
 
 #include <ngx_config.h>
 #include <ngx_core.h>
+#include <ngx_http_config.h>
+
+typedef struct  {
+    ngx_str_t trackid;
+    
+} ngx_http_trackid_conf_t;
 
 
+/* SHOULD static */
+static ngx_command_t ngx_http_trackid_commands[] = {
+    { ngx_string("trackid"),
+      NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_str_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_trackid_conf_t,trackid),
+      NULL                                 /* 设置参数是，需要的额外信息*/
+    },
+    ngx_null_command    /*数组的结束符*/
+};
 
-
+/* 这里 SHOULD 用 static, 标明这是一个本地（文件范围）变量*/
+static ngx_http_module_t ngx_http_trackid_module_ctx ={
+     NULL,                          //    ngx_int_t   (*preconfiguration)(ngx_conf_t *cf);
+     ngx_http_trackid_init,         //    ngx_int_t   (*postconfiguration)(ngx_conf_t *cf);
+            //
+            //    void       *(*create_main_conf)(ngx_conf_t *cf);
+            //    char       *(*init_main_conf)(ngx_conf_t *cf, void *conf);
+            //
+            //    void       *(*create_srv_conf)(ngx_conf_t *cf);
+            //    char       *(*merge_srv_conf)(ngx_conf_t *cf, void *prev, void *conf);
+            //
+            //    void       *(*create_loc_conf)(ngx_conf_t *cf);
+            //    char       *(*merge_loc_conf)(ngx_conf_t *cf, void *prev, void *conf);
+};
 
 
 //struct ngx_module_s {
@@ -63,9 +93,53 @@
 //};
 //
 //typedef struct ngx_module_s      ngx_module_t;
-
-ngx_module_t ngx_http_trackid = {
+/* 这里需要定义一个全局变量 ngx_http_trackid 模块，在nginx的autoconf 里面要用到*/
+ngx_module_t  ngx_http_trackid_filter_module = {
     NGX_MODULE_V1,
-    
-    
+    &ngx_http_trackid_module_ctx,          /* module context */
+    ngx_http_trackid_commands,             /* module directives */
+    NGX_HTTP_MODULE,                       /* module type */
+    NULL,                                  /* init master */
+    NULL,                                  /* init module */
+    NULL,                                  /* init process */
+    NULL,                                  /* init thread */
+    NULL,                                  /* exit thread */
+    NULL,                                  /* exit process */
+    NULL,                                  /* exit master */
+    NGX_MODULE_V1_PADDING
+};
+
+static ngx_int_t
+ngx_http_trackid_filter(ngx_http_request_t *r)
+{
+    //1.check 是否已经有了cookie
+    //2.设置新cookie
 }
+
+
+/* 自己添加在 http 的header 过滤链表里面  */
+extern ngx_http_output_header_filter_pt  ngx_http_top_header_filter;
+static ngx_http_output_header_filter_pt  ngx_http_next_header_filter;
+static ngx_uint_t
+ngx_http_trackid_init(ngx_conf_t *cf)
+{
+    ngx_http_next_header_filter = ngx_http_top_header_filter;
+    ngx_http_top_header_filter = ngx_http_trackid_filter;
+    
+    return NGX_OK;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
