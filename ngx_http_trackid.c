@@ -9,7 +9,7 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
-
+#include <ngx_md5.h>
 
 #define NGX_HTTP_TRACKID_LEN  (32+1)
 
@@ -32,7 +32,7 @@ typedef struct  {
     
 } ngx_http_trackid_conf_t;
 
-extern ngx_http_output_header_filter_pt  ngx_http_top_header_filter;
+//extern ngx_http_output_header_filter_pt  ngx_http_top_header_filter;
 static ngx_http_output_header_filter_pt  ngx_http_next_header_filter;
 
 
@@ -59,10 +59,8 @@ ngx_http_trackid_merge_svr_conf(ngx_conf_t *cf, void *parent, void *child);
 /* SHOULD static */
 /* TODO  :  
             1.Http conf merge.
-            2.domain
-            3.expires
-            4.type(algorithm)
-            5.cookie path
+            2.type(algorithm)
+            3.switch
 */
 static ngx_command_t ngx_http_trackid_commands[] = {
     { ngx_string("trackid"),
@@ -185,27 +183,39 @@ ngx_http_trackid_filter(ngx_http_request_t *r)
 {
     //1.check 是否已经有了cookie
     //2.设置新cookie
-    
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "ngx_http_trackid: line [%d]",__LINE__);
     ngx_http_trackid_ctx_t   *ctx;
     ngx_http_trackid_conf_t  *conf;
     
     /* 只处理主请求 */
-    if (r != r->main)     {
+    if (r != r->main) {
+        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                       "ngx_http_trackid: not main request");
         return ngx_http_next_header_filter(r);
     }
-    
-    conf = ngx_http_get_module_loc_conf(r, ngx_http_trackid_filter_module);
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "ngx_http_trackid: line [%d]",__LINE__);
+
+    conf = ngx_http_get_module_srv_conf(r, ngx_http_trackid_filter_module);
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "ngx_http_trackid: line [%d]",__LINE__);
+
     //读取当前值
     ctx = ngx_http_trackid_get(r, conf);
     if (ctx == NULL) {
         return NGX_ERROR;
     }
-    
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "ngx_http_trackid: line [%d]",__LINE__);
+
     //设置新值
     if (ngx_http_trackid_set(r, ctx, conf) == NGX_OK) {
         return ngx_http_next_header_filter(r);
     }
-    
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "ngx_http_trackid: line [%d]",__LINE__);
+
     return NGX_ERROR;
 }
 
@@ -218,7 +228,9 @@ ngx_http_trackid_get(ngx_http_request_t *r,ngx_http_trackid_conf_t * conf)
     ngx_http_trackid_ctx_t      *ctx;
     
     ctx = ngx_http_get_module_ctx(r, ngx_http_trackid_filter_module);
-    
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "ngx_http_trackid: line [%d]",__LINE__);
+
     if (ctx) {
         return ctx;
     }
@@ -231,13 +243,26 @@ ngx_http_trackid_get(ngx_http_request_t *r,ngx_http_trackid_conf_t * conf)
         
         ngx_http_set_ctx(r, ctx, ngx_http_trackid_filter_module);
     }
+    ngx_log_debug3(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "ngx_http_trackid: line [%d] ,ctx_p[%p], trackid_p[%p]",
+                   __LINE__,ctx,&conf->trackid);
     
+    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "ngx_http_trackid: line [%d] ,cookie len[%d]",
+                   __LINE__,ctx->cookie.len);
+
     n = ngx_http_parse_multi_header_lines(&r->headers_in.cookies, &conf->trackid,
                                           &ctx->cookie);
+    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "ngx_http_trackid: line [%d] ,cookie len[%d]",
+                   __LINE__,ctx->cookie.len);
+
     if (n == NGX_DECLINED) {
         return ctx;
     }
-    
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "ngx_http_trackid: line [%d]",__LINE__);
+
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "trackid cookie: \"%V\"", &ctx->cookie);
     
@@ -260,16 +285,22 @@ ngx_http_trackid_set(ngx_http_request_t *r,ngx_http_trackid_ctx_t * ctx,
     u_char           *cookie, *p;
     size_t            len;
     ngx_table_elt_t  *set_cookie;
-    
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "ngx_http_trackid: line [%d]",__LINE__);
     if (ngx_http_trackid_create(r, ctx, conf) != NGX_OK) {
         return NGX_ERROR;
     }
-    
+    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "ngx_http_trackid: line [%d] trackid.len[%uD]",
+                   __LINE__,
+                   conf->trackid.len);
     len = conf->trackid.len + 1 + NGX_HTTP_TRACKID_LEN + conf->path.len;
     
     if (conf->expires) {
         len += sizeof(expires) - 1 + 2;
     }
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "ngx_http_trackid: line [%d]",__LINE__);
     
     if (conf->domain.len) {
         len += conf->domain.len;
@@ -314,7 +345,7 @@ ngx_http_trackid_set(ngx_http_request_t *r,ngx_http_trackid_ctx_t * ctx,
 }
 
 
-/* 自己添加在 http 的header 过滤链表里面  */
+/* 自己添加到 http 的header 过滤链表里面  */
 static ngx_int_t
 ngx_http_trackid_init(ngx_conf_t *cf)
 {
@@ -325,17 +356,36 @@ ngx_http_trackid_init(ngx_conf_t *cf)
 }
 
 
+/* 创建模块运行时上下文 */
 static ngx_int_t
 ngx_http_trackid_create(ngx_http_request_t *r, ngx_http_trackid_ctx_t *ctx,
                         ngx_http_trackid_conf_t *conf)
 {
-    ctx->cookie.len = NGX_HTTP_TRACKID_LEN;
-    ctx->cookie.data=(u_char*)"12345678abcdefgh12345678abcdefgh";
-    
+    if(ctx->cookie.len==0){
+        time_t t = ngx_time();
+        ngx_md5_t md5;
+        const  size_t hashlen=16;
+        u_char hash[hashlen];
+        ngx_md5_init(&md5);
+        ngx_md5_update(&md5,(u_char*)&t,sizeof(t));
+        ngx_md5_final(hash,&md5);
+        
+        ctx->cookie.data= ngx_pnalloc(r->pool, hashlen+1);
+        if(ctx->cookie.data == NULL){
+            return NGX_ERROR;
+        }
+        ctx->cookie.len = hashlen+1;
+        ngx_copy(ctx->cookie.data,hash,hashlen);
+        /*
+        ctx->cookie.len = NGX_HTTP_TRACKID_LEN;
+        ctx->cookie.data=(u_char*)"12345678abcdefgh12345678abcdefgh";
+         */
+    }
     return NGX_OK;
 }
 
 
+/* 解析 trackid_expires 配置 */
 static char *
 ngx_http_trackid_expires(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
@@ -368,7 +418,7 @@ ngx_http_trackid_expires(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 }
 
 
-
+/*创建配置的上下文*/
 static void *
 ngx_http_trackid_create_svr_conf(ngx_conf_t *cf)
 {
@@ -392,12 +442,12 @@ ngx_http_trackid_create_svr_conf(ngx_conf_t *cf)
     return conf;
 }
 
+/* 合并上层代码 */
 static char *
 ngx_http_trackid_merge_svr_conf(ngx_conf_t *cf, void *parent, void *child)
 {
     ngx_http_trackid_conf_t *prev = parent;
     ngx_http_trackid_conf_t *conf = child;
-    
     ngx_conf_merge_str_value(conf->trackid, prev->trackid, "BAIDUID");
     ngx_conf_merge_str_value(conf->domain, prev->domain, "");
     ngx_conf_merge_str_value(conf->path, prev->path, "; path=/");

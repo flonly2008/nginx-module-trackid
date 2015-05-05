@@ -5,7 +5,10 @@ CORE_MODULES="$CORE_MODULES"
 
 NGX_ADDON_DEPS="$NGX_ADDON_DEPS"
 
-HTTP_MODULES="$HTTP_MODULES                                 \
+HTTP_MODULES="$HTTP_MODULES"
+
+
+HTTP_AUX_FILTER_MODULES="$HTTP_AUX_FILTER_MODULES           \
                 ngx_http_trackid_filter_module              \
                 "
 
