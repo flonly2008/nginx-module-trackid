@@ -255,7 +255,7 @@ ngx_http_trackid_get(ngx_http_request_t *r,ngx_http_trackid_conf_t * conf)
     }
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "trackid cookie: \"%V\"", &ctx->cookie);
+                   "ngx_http_trackid: get trackid cookie: \"%V\"", &ctx->cookie);
     
     if (ctx->cookie.len != NGX_HTTP_TRACKID_LEN) {
         cookies = r->headers_in.cookies.elts;
@@ -334,7 +334,7 @@ ngx_http_trackid_set(ngx_http_request_t *r,ngx_http_trackid_ctx_t * ctx,
     set_cookie->value.data = cookie;
     
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "trackid cookie: \"%V\"", &set_cookie->value);
+                   "ngx_http_trackid: set trackid cookie: \"%V\"", &set_cookie->value);
     
     return NGX_OK;
 
