@@ -6,10 +6,9 @@
 //  Copyright (c) 2015 Flonly. All rights reserved.
 //
 
-#include "ngx_config.h"
-#include "ngx_core.h"
-#include <ngx_http_config.h>
-
+#include <ngx_config.h>
+#include <ngx_core.h>
+#include <ngx_http.h>
 
 
 #define NGX_HTTP_TRACKID_LEN  (32+1)
@@ -331,7 +330,7 @@ ngx_http_trackid_create(ngx_http_request_t *r, ngx_http_trackid_ctx_t *ctx,
                         ngx_http_trackid_conf_t *conf)
 {
     ctx->cookie.len = NGX_HTTP_TRACKID_LEN;
-    ctx->cookie.data= "12345678abcdefgh12345678abcdefgh";
+    ctx->cookie.data=(u_char*)"12345678abcdefgh12345678abcdefgh";
     
     return NGX_OK;
 }
