@@ -239,7 +239,7 @@ ngx_http_trackid_get(ngx_http_request_t *r,ngx_http_trackid_conf_t * conf)
     }
     
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "uid cookie: \"%V\"", &ctx->cookie);
+                   "trackid cookie: \"%V\"", &ctx->cookie);
     
     if (ctx->cookie.len != NGX_HTTP_TRACKID_LEN) {
         cookies = r->headers_in.cookies.elts;
