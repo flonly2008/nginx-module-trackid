@@ -11,7 +11,7 @@
 #include <ngx_http.h>
 #include <ngx_md5.h>
 
-#define NGX_HTTP_TRACKID_LEN  (32+1)
+#define NGX_HTTP_TRACKID_LEN  32
 
 /* 31 Dec 2055 23:55:55 GMT+8 */
 #define NGX_HTTP_TRACKID_MAX_EXPIRES  2713881355
@@ -20,7 +20,7 @@ static u_char expires[] = "; expires=Thu, 31-Dec-55 23:55:55 GMT";
 
 typedef struct {
     ngx_str_t   cookie;
-    ngx_uint_t  reset;
+    ngx_uint_t  isset;;
     
 } ngx_http_trackid_ctx_t;
 
@@ -61,6 +61,7 @@ ngx_http_trackid_merge_svr_conf(ngx_conf_t *cf, void *parent, void *child);
             1.Http conf merge.
             2.type(algorithm)
             3.switch
+            4.do not reset each time(request)
 */
 static ngx_command_t ngx_http_trackid_commands[] = {
     { ngx_string("trackid"),
@@ -183,8 +184,7 @@ ngx_http_trackid_filter(ngx_http_request_t *r)
 {
     //1.check 是否已经有了cookie
     //2.设置新cookie
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "ngx_http_trackid: line [%d]",__LINE__);
+
     ngx_http_trackid_ctx_t   *ctx;
     ngx_http_trackid_conf_t  *conf;
     
@@ -194,27 +194,24 @@ ngx_http_trackid_filter(ngx_http_request_t *r)
                        "ngx_http_trackid: not main request");
         return ngx_http_next_header_filter(r);
     }
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "ngx_http_trackid: line [%d]",__LINE__);
 
     conf = ngx_http_get_module_srv_conf(r, ngx_http_trackid_filter_module);
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "ngx_http_trackid: line [%d]",__LINE__);
 
     //读取当前值
     ctx = ngx_http_trackid_get(r, conf);
     if (ctx == NULL) {
         return NGX_ERROR;
     }
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "ngx_http_trackid: line [%d]",__LINE__);
-
+    
+    //不需要设置
+    if(ctx->isset){
+        return ngx_http_next_header_filter(r);
+    }
+    
     //设置新值
     if (ngx_http_trackid_set(r, ctx, conf) == NGX_OK) {
         return ngx_http_next_header_filter(r);
     }
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "ngx_http_trackid: line [%d]",__LINE__);
 
     return NGX_ERROR;
 }
@@ -228,8 +225,6 @@ ngx_http_trackid_get(ngx_http_request_t *r,ngx_http_trackid_conf_t * conf)
     ngx_http_trackid_ctx_t      *ctx;
     
     ctx = ngx_http_get_module_ctx(r, ngx_http_trackid_filter_module);
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "ngx_http_trackid: line [%d]",__LINE__);
 
     if (ctx) {
         return ctx;
@@ -243,9 +238,6 @@ ngx_http_trackid_get(ngx_http_request_t *r,ngx_http_trackid_conf_t * conf)
         
         ngx_http_set_ctx(r, ctx, ngx_http_trackid_filter_module);
     }
-    ngx_log_debug3(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "ngx_http_trackid: line [%d] ,ctx_p[%p], trackid_p[%p]",
-                   __LINE__,ctx,&conf->trackid);
     
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "ngx_http_trackid: line [%d] ,cookie len[%d]",
@@ -258,10 +250,9 @@ ngx_http_trackid_get(ngx_http_request_t *r,ngx_http_trackid_conf_t * conf)
                    __LINE__,ctx->cookie.len);
 
     if (n == NGX_DECLINED) {
+        ctx->isset = 0;
         return ctx;
     }
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "ngx_http_trackid: line [%d]",__LINE__);
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "trackid cookie: \"%V\"", &ctx->cookie);
@@ -271,8 +262,11 @@ ngx_http_trackid_get(ngx_http_request_t *r,ngx_http_trackid_conf_t * conf)
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                       "client sent cookie with error length \"%V\"",
                       &cookies[n]->value);
+        ctx->isset = 0;
+    }else{
+        ctx->isset = 1;
     }
-    
+   
     return ctx;
 }
 
@@ -285,25 +279,27 @@ ngx_http_trackid_set(ngx_http_request_t *r,ngx_http_trackid_ctx_t * ctx,
     u_char           *cookie, *p;
     size_t            len;
     ngx_table_elt_t  *set_cookie;
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "ngx_http_trackid: line [%d]",__LINE__);
+
     if (ngx_http_trackid_create(r, ctx, conf) != NGX_OK) {
         return NGX_ERROR;
     }
+    
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "ngx_http_trackid: line [%d] trackid.len[%uD]",
                    __LINE__,
                    conf->trackid.len);
-    len = conf->trackid.len + 1 + NGX_HTTP_TRACKID_LEN + conf->path.len;
+    len = conf->trackid.len + 1 + ctx->cookie.len + conf->path.len;
     
     if (conf->expires) {
-        len += sizeof(expires) - 1 + 2;
+        len += sizeof(expires) - 1;
     }
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "ngx_http_trackid: line [%d]",__LINE__);
     
     if (conf->domain.len) {
         len += conf->domain.len;
+    }
+    
+    if ( conf->path.len){
+        len += conf->path.len;
     }
     
     cookie = ngx_pnalloc(r->pool, len);
@@ -313,7 +309,7 @@ ngx_http_trackid_set(ngx_http_request_t *r,ngx_http_trackid_ctx_t * ctx,
     
     p = ngx_copy(cookie, conf->trackid.data, conf->trackid.len);
     *p++ = '=';
-    p = ngx_cpymem(p, ctx->cookie.data,NGX_HTTP_TRACKID_LEN);
+    p = ngx_cpymem(p, ctx->cookie.data,ctx->cookie.len);
     
     if (conf->expires == NGX_HTTP_TRACKID_MAX_EXPIRES) {
         p = ngx_cpymem(p, expires, sizeof(expires) - 1);
@@ -338,7 +334,7 @@ ngx_http_trackid_set(ngx_http_request_t *r,ngx_http_trackid_ctx_t * ctx,
     set_cookie->value.data = cookie;
     
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "uid cookie: \"%V\"", &set_cookie->value);
+                   "trackid cookie: \"%V\"", &set_cookie->value);
     
     return NGX_OK;
 
@@ -361,26 +357,38 @@ static ngx_int_t
 ngx_http_trackid_create(ngx_http_request_t *r, ngx_http_trackid_ctx_t *ctx,
                         ngx_http_trackid_conf_t *conf)
 {
-    if(ctx->cookie.len==0){
-        time_t t = ngx_time();
-        ngx_md5_t md5;
-        const  size_t hashlen=16;
-        u_char hash[hashlen];
-        ngx_md5_init(&md5);
-        ngx_md5_update(&md5,(u_char*)&t,sizeof(t));
-        ngx_md5_final(hash,&md5);
-        
-        ctx->cookie.data= ngx_pnalloc(r->pool, hashlen+1);
-        if(ctx->cookie.data == NULL){
-            return NGX_ERROR;
-        }
-        ctx->cookie.len = hashlen+1;
-        ngx_copy(ctx->cookie.data,hash,hashlen);
-        /*
-        ctx->cookie.len = NGX_HTTP_TRACKID_LEN;
-        ctx->cookie.data=(u_char*)"12345678abcdefgh12345678abcdefgh";
-         */
+    const  size_t   hash_len      = 16;
+    const  size_t   cookie_len    = hash_len*2;
+    time_t          t             = ngx_time();
+    u_char          hash[hash_len]={0};
+    u_char          value[128]    ={0};
+    ngx_md5_t       md5;
+    u_char          *p;
+
+    
+    if (ctx->cookie.len !=0 && ctx->cookie.len != cookie_len){
+        ctx->cookie.data= ngx_pnalloc(r->pool, cookie_len);
     }
+    
+    ctx->cookie.data= ngx_pnalloc(r->pool, cookie_len);
+    if(ctx->cookie.data == NULL){
+        return NGX_ERROR;
+    }
+    ctx->cookie.len = cookie_len;
+
+    ngx_snprintf(value,128,"%T",t);
+    ngx_md5_init(&md5);
+    ngx_md5_update(&md5,(const char*)value,ngx_strlen((const char*)value));
+    ngx_md5_final(hash,&md5);
+    
+    p = ctx->cookie.data;
+    for(uint32_t i=0; i< hash_len ; i++){
+        ngx_snprintf(p,2,"%02XD",hash[i]);
+        p += 2;
+    }
+    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "trackid cookie.data[%V]  with[%T]", &ctx->cookie,t);
+    
     return NGX_OK;
 }
 
